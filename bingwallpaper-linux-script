@@ -1,0 +1,293 @@
+#!/bin/bash
+
+usage() {
+    echo "Usage: bingwallpaper-linux-script [options]"
+    echo "Options:"
+    echo " -h, --help  Show this help message"
+    echo " -v, --version  Show version information"
+    echo " -a, --all Download the last 7 days of Bing wallpapers to ~/pictures/bingwallpaper directory. When this parameter is set, other parameters are ignored. Wallpaper information can be displayed."
+    echo " -c, --country Set region,
+                China: zh-CN, 
+                United States: en-US, 
+                Japan: ja-JP, 
+                United Kingdom: en-UK, 
+                Germany: de-DE, 
+                Australia: en-AU, 
+                New Zealand: en-NZ, 
+                Canada: en-CA"
+    echo " -d, --date Download Bing wallpaper for a specific date to ~/pictures/bingwallpaper directory"
+    echo " -r, --resolution Download wallpaper with specified resolution to ~/pictures/bingwallpaper directory, default 4k"
+    echo "                 Supported resolutions: 1920x1200, 1920x1080, 1366x768, 1280x768,"
+    echo "                 1080x1920, 768x1024, 800x600, 640x480, 3840x2160 (4K)"
+    echo " -s, --save Set custom save path"
+    echo " -i, --info Display wallpaper related information"
+    echo " -b, --backend Set wallpaper command, using \$wallpaper variable to receive wallpaper path"
+}
+
+version() {
+    echo "Bing Wallpaper Script version 1.0"
+}
+
+# Default parameters
+RESOLUTION="3840x2160"
+DATE=""
+REGION="en-US"
+SAVE_PATH="$HOME/Pictures/bingwallpaper"
+SHOW_DETAIL=false
+DOWNLOAD_ALL=false
+BACKEND_CMD=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -v|--version)
+            version
+            exit 0
+            ;;
+        -a|--all)
+            DOWNLOAD_ALL=true
+            shift
+            ;;
+        -c|--country)
+            if [[ -n "$2" ]]; then
+                REGION="$2"
+                shift 2
+            else
+                echo "Error: --country parameter requires a region code"
+                exit 1
+            fi
+            ;;
+        -d|--date)
+            if [[ -n "$2" ]]; then
+                DATE="$2"
+                shift 2
+            else
+                echo "Error: --date parameter requires a date"
+                exit 1
+            fi
+            ;;
+        -r|--resolution)
+            if [[ -n "$2" ]]; then
+                RESOLUTION="$2"
+                shift 2
+            else
+                echo "Error: --resolution parameter requires a resolution"
+                exit 1
+            fi
+            ;;
+        -s|--save)
+            if [[ -n "$2" ]]; then
+                SAVE_PATH="$2"
+                shift 2
+            else
+                echo "Error: --save parameter requires a save path"
+                exit 1
+            fi
+            ;;
+        -i|--info)
+            SHOW_DETAIL=true
+            shift
+            ;;
+        -b|--backend)
+            if [[ -n "$2" ]]; then
+                BACKEND_CMD="$2"
+                shift 2
+            else
+                echo "Error: --backend parameter requires a command"
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Unknown parameter: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Create save directory
+mkdir -p "$SAVE_PATH"
+
+# Validate region code
+case $REGION in
+    "zh-CN"|"en-US"|"ja-JP"|"en-UK"|"de-DE"|"en-AU"|"en-NZ"|"en-CA")
+        ;;
+    *)
+        echo "Error: Unsupported region code '$REGION'"
+        echo "Supported regions: zh-CN, en-US, ja-JP, en-UK, de-DE, en-AU, en-NZ, en-CA"
+        exit 1
+        ;;
+esac
+
+# Validate resolution
+case $RESOLUTION in
+    "1920x1200"|"1920x1080"|"1366x768"|"1280x768"|"1080x1920"|"768x1024"|"800x600"|"640x480"|"3840x2160")
+        ;;
+    *)
+        echo "Error: Unsupported resolution '$RESOLUTION'"
+        echo "Supported resolutions: 1920x1200, 1920x1080, 1366x768, 1280x768,"
+        echo "1080x1920, 768x1024, 800x600, 640x480, 3840x2160 (4K)"
+        exit 1
+        ;;
+esac
+
+# Validate date format (if provided)
+if [[ -n "$DATE" ]]; then
+    if ! [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "Error: Invalid date format '$DATE', please use YYYY-MM-DD format"
+        exit 1
+    fi
+    
+    if ! date -d "$DATE" >/dev/null 2>&1; then
+        echo "Error: Invalid date '$DATE'"
+        exit 1
+    fi
+    
+    if [[ $(date -d "$DATE" +%s) -gt $(date +%s) ]]; then
+        echo "Error: Date cannot be in the future '$DATE'"
+        exit 1
+    fi
+fi
+
+# Check required tools
+if ! command -v curl &> /dev/null; then
+    echo "Error: curl tool is not installed"
+    exit 1
+fi
+
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq tool is not installed"
+    echo "On Ubuntu/Debian: sudo apt install jq"
+    echo "On CentOS/RHEL: sudo yum install jq"
+    exit 1
+fi
+
+# Download wallpaper function
+download_wallpaper() {
+    local idx=$1
+    local date_param=$2
+    
+    # Build API URL
+    local url="https://www.bing.com/HPImageArchive.aspx?format=js&idx=$idx&n=1&mkt=$REGION"
+    if [[ "$RESOLUTION" == "3840x2160" ]]; then
+        url="${url}&uhd=1"
+    fi
+    
+    # Get JSON response
+    local json_response=$(curl -s "$url")
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to get Bing API data"
+        return 1
+    fi
+    
+    # Extract wallpaper information
+    local img_url="https://www.bing.com$(echo "$json_response" | jq -r '.images[0].url')"
+    local description=$(echo "$json_response" | jq -r '.images[0].copyright' 2>/dev/null)
+    local title=$(echo "$json_response" | jq -r '.images[0].title' 2>/dev/null)
+    
+    if [ -z "$description" ] || [ "$description" = "null" ]; then
+        echo "Error: Failed to parse Bing API response"
+        return 1
+    fi
+    
+    # Manually modify URL to get specific resolution image
+    # Extract width and height from resolution parameter
+    local target_width=$(echo "$RESOLUTION" | cut -d'x' -f1)
+    local target_height=$(echo "$RESOLUTION" | cut -d'x' -f2)
+    
+    # For 4K resolution, use UHD parameter (already set in API URL)
+    if [[ "$RESOLUTION" != "3840x2160" ]]; then
+        # For other resolutions, modify the URL parameters
+        # Remove any existing resolution parameters
+        img_url=$(echo "$img_url" | sed 's/[?&]w=[0-9]*//g' | sed 's/[?&]h=[0-9]*//g')
+        
+        # Add the target resolution parameters
+        if [[ "$img_url" == *"?"* ]]; then
+            img_url="${img_url}&w=${target_width}&h=${target_height}"
+        else
+            img_url="${img_url}?w=${target_width}&h=${target_height}"
+        fi
+    fi
+    
+    # Determine filename (use title, keep spaces)
+    local filename
+    if [[ -n "$date_param" ]]; then
+        filename="bing_${date_param}_${title}.jpg"
+    else
+        local today=$(date +%Y-%m-%d)
+        filename="bing_${today}_${title}.jpg"
+    fi
+    
+    local filepath="$SAVE_PATH/$filename"
+    
+    # Download wallpaper
+    echo "Downloading: $filename"
+    curl -s -o "$filepath" "$img_url"
+    
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to download wallpaper"
+        return 1
+    fi
+    
+    # Display detailed information
+    if [ "$SHOW_DETAIL" = true ] || [ "$DOWNLOAD_ALL" = true ]; then
+        echo "Wallpaper information:"
+        echo "  Description: $description"
+        echo "  Title: $title"
+        echo "  Date: ${date_param:-$(date +%Y-%m-%d)}"
+        echo "  Resolution: $RESOLUTION"
+        echo "  Save path: $filepath"
+        echo
+    fi
+    
+    # Set wallpaper (if backend command is provided)
+    if [[ -n "$BACKEND_CMD" ]]; then
+        echo "Executing wallpaper set command..."
+        wallpaper="$filepath" eval "$BACKEND_CMD"
+        if [ $? -ne 0 ]; then
+            echo "Warning: Wallpaper set command execution failed"
+        else
+            echo "Wallpaper set command executed successfully"
+        fi
+    fi
+    
+    return 0
+}
+
+# Process download all wallpapers
+if [ "$DOWNLOAD_ALL" = true ]; then
+    echo "Downloading the last 7 days of Bing wallpapers..."
+    echo "Save directory: $SAVE_PATH"
+    echo "Region: $REGION"
+    echo "Resolution: $RESOLUTION"
+    echo
+    
+    for i in {0..6}; do
+        download_date=$(date -d "$i days ago" +%Y-%m-%d)
+        echo "=== Processing date: $download_date ==="
+        download_wallpaper $i "$download_date"
+        echo
+    done
+    echo "All wallpapers downloaded successfully!"
+    exit 0
+fi
+
+# Process single wallpaper download
+if [[ -n "$DATE" ]]; then
+    # Calculate date difference
+    days_diff=$(( ($(date +%s) - $(date -d "$DATE" +%s)) / 86400 ))
+    if [[ $days_diff -gt 7 ]]; then
+        echo "Error: Bing only archives wallpapers from the past 7 days"
+        exit 1
+    fi
+    download_wallpaper $days_diff "$DATE"
+else
+    # Download today's wallpaper
+    download_wallpaper 0
+fi
+
+echo "Wallpaper download completed!"
