@@ -2,6 +2,10 @@
 
 A beautiful and powerful command-line tool to download Bing's daily wallpapers on Linux systems. 📸✨
 
+
+https://github.com/user-attachments/assets/afd7c05f-1212-4ef7-a54d-b521fb9d8216
+
+
 ---
 
 ## 🚀 Features
