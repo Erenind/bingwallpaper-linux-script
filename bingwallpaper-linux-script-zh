@@ -21,7 +21,7 @@ usage() {
     echo "                 1080x1920, 768x1024, 800x600, 640x480, 3840x2160 (4K)"
     echo " -s, --save 设置自定义保存路径"
     echo " -i, --info 显示壁纸相关信息"
-    echo " -b, --backend 设置壁纸需要的命令，以\$wallpaper变量接收壁纸路径"
+    echo " -b, --backend 设置壁纸需要的命令，以\"\$wallpaper\"变量接收壁纸路径,请确保使用\"\$wallpaper\"而不是\$wallpaper,因为文件名可能存在空格。"
 }
 
 version() {
@@ -249,7 +249,7 @@ download_wallpaper() {
         echo "执行壁纸设置命令..."
         wallpaper="$filepath" eval "$BACKEND_CMD"
         if [ $? -ne 0 ]; then
-            echo "警告: 壁纸设置命令执行失败"
+            echo "警告: 壁纸设置命令执行失败。请确保使用\"\$wallpaper\"而不是\$wallpaper,因为文件名可能存在空格。"
         else
             echo "壁纸设置命令执行成功"
         fi

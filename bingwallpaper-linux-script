@@ -21,7 +21,7 @@ usage() {
     echo "                 1080x1920, 768x1024, 800x600, 640x480, 3840x2160 (4K)"
     echo " -s, --save Set custom save path"
     echo " -i, --info Display wallpaper related information"
-    echo " -b, --backend Set wallpaper command, using \$wallpaper variable to receive wallpaper path"
+    echo " -b, --backend Set wallpaper command, using \"\$wallpaper\" variable to receive wallpaper path. Please make sure to use \"\$wallpaper\" instead of \$wallpaper, as the filename may contain spaces."
 }
 
 version() {
@@ -249,7 +249,7 @@ download_wallpaper() {
         echo "Executing wallpaper set command..."
         wallpaper="$filepath" eval "$BACKEND_CMD"
         if [ $? -ne 0 ]; then
-            echo "Warning: Wallpaper set command execution failed"
+            echo "Warning: Wallpaper set command execution failed.Please make sure to use \"\$wallpaper\" instead of \$wallpaper, as the filename may contain spaces."
         else
             echo "Wallpaper set command executed successfully"
         fi
